@@ -280,6 +280,13 @@ func (c *guiClient) initUI() {
 			},
 		},
 	}
+
+	if (c.dev) {
+		c.gui.Actions() <- SetTitle{"Pond - " + c.stateFilename}
+	} else {
+		c.gui.Actions() <- SetTitle{"Pond - " + c.stateFilename}
+	}
+
 	c.gui.Actions() <- Reset{ui}
 }
 
