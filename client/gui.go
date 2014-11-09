@@ -436,6 +436,10 @@ func (c *guiClient) mainUI() {
 													widgetBase: widgetBase{width: 100, name: "compose"},
 													text:       "Compose",
 												},
+												Button{
+													widgetBase: widgetBase{width: 100, name: "deleteAll"},
+													text:       "Delete All",
+												},
 											},
 										},
 									},
@@ -661,10 +665,13 @@ func (c *guiClient) mainUI() {
 			continue
 		}
 		switch click.name {
-		case "newcontact":
-			nextEvent = c.newContactUI(nil)
-		case "compose":
-			nextEvent = c.composeUI(nil, nil)
+			case "newcontact":
+				nextEvent = c.newContactUI(nil)
+			case "compose":
+				nextEvent = c.composeUI(nil, nil)
+			case "deleteAll":
+				println("calling c.deleteAll")
+				c.deleteAll()
 		}
 	}
 }
@@ -2890,6 +2897,16 @@ func (c *guiClient) updateUsage(validContactSelected bool, draft *Draft) bool {
 	}
 	c.gui.Actions() <- SetForeground{name: "usage", foreground: color}
 	return over
+}
+
+func (c *guiClient) deleteAll() {
+	println("deleteAll invoked")
+	for _, msg := range c.outbox {
+		println(fmt.Sprintf("calling c.outboxUI.Remove on msg.id = %d", msg.id))
+		c.outboxUI.Remove(msg.id)
+		println(fmt.Sprintf("calling c.deleteOutboxMsg on msg.id = %d", msg.id))
+		c.deleteOutboxMsg(msg.id)
+	}
 }
 
 func (c *guiClient) composeUI(draft *Draft, inReplyTo *InboxMessage) interface{} {
