@@ -691,7 +691,7 @@ func (c *guiClient) mainUI() {
 				nextEvent = c.composeUI(nil)
 			case "deleteAll":
 				println("calling c.deleteAll")
-				c.deleteAll()
+				nextEvent = c.deleteAll()
 		}
 	}
 }
@@ -3264,7 +3264,7 @@ func (c *guiClient) updateUsage(validContactSelected bool, draft *Draft) bool {
 	return over
 }
 
-func (c *guiClient) deleteAll() {
+func (c *guiClient) deleteAll() interface {} {
 	println("deleteAll invoked")
 	for _, msg := range c.outbox {
 		println(fmt.Sprintf("calling c.outboxUI.Remove on msg.id = %d", msg.id))
@@ -3272,6 +3272,7 @@ func (c *guiClient) deleteAll() {
 		println(fmt.Sprintf("calling c.deleteOutboxMsg on msg.id = %d", msg.id))
 		c.deleteOutboxMsg(msg.id)
 	}
+	return nil
 }
 
 func (c *guiClient) createDraft(inReplyTo *InboxMessage,to uint64) (draft *Draft) {
