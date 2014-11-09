@@ -70,6 +70,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -351,6 +352,24 @@ NextChar:
 	return
 }
 
+func (c *client) cliIdToContact(id cliId) (*Contact) {
+	for _, contact := range c.contacts {
+		if contact.cliId == id {
+			return contact
+		}
+	}
+	return nil
+}
+
+func hexDecodeSafe(dst []byte, src string) bool {
+	l := len(dst) // amazingly this actually works if you call using [:]
+	if hex.DecodedLen(len(src)) != l { return false }
+	s := []byte(src)
+	n, err := hex.Decode(dst,s)
+	if err != nil || n != l { return false }
+	return true
+}
+
 // InboxMessage represents a message in the client's inbox. (Acks also appear
 // as InboxMessages, but their message.Body is empty.)
 type InboxMessage struct {
@@ -384,12 +403,7 @@ type InboxMessage struct {
 	decryptions map[uint64]*pendingDecryption
 }
 
-func (msg *InboxMessage) Strings() (from, sentTime, eraseTime, body string) {
-	isServerAnnounce := msg.from == 0
-
-	if isServerAnnounce {
-		from = "<Home Server>"
-	}
+func (msg *InboxMessage) Strings() (sentTime, eraseTime, body string) {
 	isPending := msg.message == nil
 	if isPending {
 		body = "(cannot display message as key exchange is still pending)"
@@ -483,6 +497,30 @@ type Contact struct {
 type Event struct {
 	t   time.Time
 	msg string
+}
+
+// clientList is a sortable listing of contacts
+type contactList []*Contact
+
+func (cl contactList) Len() int {
+	return len(cl)
+}
+
+func (cl contactList) Less(i, j int) bool {
+	return cl[i].name < cl[j].name
+}
+
+func (cl contactList) Swap(i, j int) {
+	cl[i], cl[j] = cl[j], cl[i]
+}
+
+func (c *client) contactsSorted() ([]*Contact) {
+	contacts := contactList(make([]*Contact, 0, len(c.contacts)))
+	for i := range c.contacts {
+		contacts = append(contacts, c.contacts[i])
+	}
+	sort.Sort(contacts)
+	return contacts
 }
 
 // previousTagLifetime contains the amount of time that we'll store a previous
@@ -652,11 +690,20 @@ func (c *client) outboxToDraft(msg *queuedMessage) *Draft {
 	return draft
 }
 
+func (c *client) ContactName(id uint64) string {
+	if id == 0 {
+		return "Home Server"
+	}
+	return c.contacts[id].name
+}
+
 // detectTor sets c.torAddress, either from the POND_TOR_ADDRESS environment
 // variable if it is set or by attempting to connect to port 9050 and 9150 on
 // the local host and assuming that Tor is running on the first port that it
 // finds to be open.
 func (c *client) detectTor() bool {
+	c.torAddress = "127.0.0.1:9050" // default for dev mode.
+
 	if addr := os.Getenv("POND_TOR_ADDRESS"); len(addr) != 0 {
 		if _, _, err := net.SplitHostPort(addr); err != nil {
 			c.log.Printf("Ignoring POND_TOR_ADDRESS because of parse error: %s", err)
@@ -719,8 +766,7 @@ var errInterrupted = errors.New("cli: interrupt signal")
 func (c *client) loadUI() error {
 	c.ui.initUI()
 
-	c.torAddress = "127.0.0.1:9050" // default for dev mode.
-	if !c.dev && !c.detectTor() {
+	if !c.detectTor() && !c.dev {
 		if err := c.ui.torPromptUI(); err != nil {
 			return err
 		}
@@ -1122,7 +1168,7 @@ func (c *client) moveContactsMessagesToEndOfQueue(id uint64) {
 		if queuedMsg.to == id {
 			movedMessages = append(movedMessages, queuedMsg)
 		} else {
-			newQueue = append(movedMessages, queuedMsg)
+			newQueue = append(newQueue, queuedMsg)
 		}
 	}
 	newQueue = append(newQueue, movedMessages...)
@@ -1240,6 +1286,33 @@ func (c *client) runPANDA(serialisedKeyExchange []byte, id uint64, name string, 
 		err:    err,
 		result: result,
 	}
+}
+
+// Launches a runPANDA goroutine based upon a panda.SharedSecret and a
+// preliminary contact struct. 
+func (c *client) beginPandaKeyExchange(contact *Contact,secret panda.SharedSecret) {
+	if c.findContactByName(contact.name) != 0 {
+		c.log.Printf("A contact by the name %s already exists, this is an internal error.",contact.name);
+		return
+	}
+
+	c.newKeyExchange(contact)
+
+	mp := c.newMeetingPlace()
+
+	c.contacts[contact.id] = contact
+	kx, err := panda.NewKeyExchange(c.rand, mp, &secret, contact.kxsBytes)
+	if err != nil {
+		panic(err)
+	}
+	kx.Testing = c.testing
+	contact.pandaKeyExchange = kx.Marshal()
+	contact.kxsBytes = nil
+
+	c.save()
+	c.pandaWaitGroup.Add(1)
+	contact.pandaShutdownChan = make(chan struct{})
+	go c.runPANDA(contact.pandaKeyExchange, contact.id, contact.name, contact.pandaShutdownChan)
 }
 
 // processPANDAUpdate runs on the main client goroutine and handles messages
