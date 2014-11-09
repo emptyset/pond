@@ -423,6 +423,27 @@ func (c *guiClient) mainUI() {
 							},
 						},
 						EventBox{widgetBase: widgetBase{height: 1, background: colorSep}},
+						HBox{
+							widgetBase: widgetBase{padding: 6},
+							children: []Widget{
+								HBox{widgetBase: widgetBase{expand: true}},
+								HBox{
+									widgetBase: widgetBase{padding: 8},
+									children: []Widget{
+										VBox{
+											widgetBase: widgetBase{padding: 8},
+											children: []Widget{
+												Button{
+													widgetBase: widgetBase{width: 100, name: "deleteInbox"},
+													text:       "Delete All",
+												},
+											},
+										},
+									},
+								},
+								HBox{widgetBase: widgetBase{expand: true}},
+							},
+						},
 						VBox{widgetBase: widgetBase{name: "inboxVbox"}},
 
 						EventBox{
@@ -453,7 +474,7 @@ func (c *guiClient) mainUI() {
 													text:       "Compose",
 												},
 												Button{
-													widgetBase: widgetBase{width: 100, name: "deleteAll"},
+													widgetBase: widgetBase{width: 100, name: "deleteOutbox"},
 													text:       "Delete All",
 												},
 											},
@@ -689,9 +710,10 @@ func (c *guiClient) mainUI() {
 				nextEvent = c.introduceUI(0)
 			case "compose":
 				nextEvent = c.composeUI(nil)
-			case "deleteAll":
-				println("calling c.deleteAll")
-				nextEvent = c.deleteAll()
+			case "deleteInbox":
+				nextEvent = c.deleteInbox()
+			case "deleteOutbox":
+				nextEvent = c.deleteOutbox()
 		}
 	}
 }
@@ -3264,12 +3286,17 @@ func (c *guiClient) updateUsage(validContactSelected bool, draft *Draft) bool {
 	return over
 }
 
-func (c *guiClient) deleteAll() interface {} {
-	println("deleteAll invoked")
+func (c *guiClient) deleteInbox() interface {} {
+	for _, msg := range c.inbox {
+		c.inboxUI.Remove(msg.id)
+		c.deleteInboxMsg(msg.id)
+	}
+	return nil
+}
+
+func (c *guiClient) deleteOutbox() interface {} {
 	for _, msg := range c.outbox {
-		println(fmt.Sprintf("calling c.outboxUI.Remove on msg.id = %d", msg.id))
 		c.outboxUI.Remove(msg.id)
-		println(fmt.Sprintf("calling c.deleteOutboxMsg on msg.id = %d", msg.id))
 		c.deleteOutboxMsg(msg.id)
 	}
 	return nil
